@@ -1182,9 +1182,15 @@ def init_db_api():
 
 		@staticmethod
 		def from_isbn(isbn: str) -> "Book":
+			def sanitize_log_value(value: str) -> str:
+				return value.replace("\r", "\\r").replace("\n", "\\n")
+
+			safe_isbn = sanitize_log_value(isbn)
+
 			if isbnlib.is_isbn10(isbn):
-				logger.info(f"Decision: from-isbn - Converting ISBN-10 to ISBN-13. isbn={isbn}")
+				logger.info(f"Decision: from-isbn - Converting ISBN-10 to ISBN-13. isbn={safe_isbn}")
 				isbn = isbnlib.to_isbn13(isbn)
+				safe_isbn = sanitize_log_value(isbn)
 
 			try:
 				book_info: dict = httpx.get(
@@ -1198,7 +1204,7 @@ def init_db_api():
 				publish_date: str = book_info["publishedDate"]
 				cover_url: str = book_info.get("imageLinks", {}).get("thumbnail", "/static/images/no-cover.png")
 			except KeyError: # Google Books API returned zero items, use openlib as fallback
-				logger.warning(f"Failure: from-isbn - Google Books lookup missing data. isbn={isbn}. Falling back to Open Library")
+				logger.warning(f"Failure: from-isbn - Google Books lookup missing data. isbn={safe_isbn}. Falling back to Open Library")
 				book_info = httpx.get(f"https://openlibrary.org/isbn/{isbn}.json", follow_redirects=True).json()
 
 				work_path: str = book_info["works"][0]["key"]
@@ -1215,10 +1221,10 @@ def init_db_api():
 
 				try:
 					if httpx.get(cover_url, follow_redirects=True).is_error:
-						logger.warning(f"Failure: from-isbn - Open Library cover unavailable. isbn={isbn}")
+						logger.warning(f"Failure: from-isbn - Open Library cover unavailable. isbn={safe_isbn}")
 						cover_url = "/static/images/no-cover.png"
 				except httpx.HTTPError:
-					logger.warning(f"Failure: from-isbn - Open Library cover request failed. isbn={isbn}")
+					logger.warning(f"Failure: from-isbn - Open Library cover request failed. isbn={safe_isbn}")
 					cover_url = "/static/images/no-cover.png"
 
 				title = work_info["title"]
